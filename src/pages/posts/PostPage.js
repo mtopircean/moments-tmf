@@ -1,55 +1,92 @@
-import React from "react";
-import styles from "../../styles/Profile.module.css";
-import btnStyles from "../../styles/Button.module.css";
-import { useCurrentUser } from "../../contexts/CurrentUserContext";
-import { Link } from "react-router-dom";
-import Avatar from "../../components/Avatar";
-import { Button } from "react-bootstrap";
-import { useSetProfileData } from "../../contexts/ProfileDataContext";
+import React, { useEffect, useState } from "react";
 
-const Profile = (props) => {
-  const { profile, mobile, imageSize = 55 } = props;
-  const { id, following_id, image, owner } = profile;
+import Col from "react-bootstrap/Col";
+import Row from "react-bootstrap/Row";
+import Container from "react-bootstrap/Container";
+
+import appStyles from "../../App.module.css";
+import { useParams } from "react-router-dom";
+import { axiosReq } from "../../api/axiosDefaults";
+import Post from "./Post";
+import Comment from "../comments/Comment";
+
+import CommentCreateForm from "../comments/CommentCreateForm";
+import { useCurrentUser } from "../../contexts/CurrentUserContext";
+
+import InfiniteScroll from "react-infinite-scroll-component";
+import Asset from "../../components/Assets";
+import { fetchMoreData } from "../../utils/utils";
+import PopularProfiles from "../profiles/PopularProfiles";
+
+function PostPage() {
+  const { id } = useParams();
+  const [post, setPost] = useState({ results: [] });
 
   const currentUser = useCurrentUser();
-  const is_owner = currentUser?.username === owner;
+  const profile_image = currentUser?.profile_image;
+  const [comments, setComments] = useState({ results: [] });
 
-  const { handleFollow, handleUnfollow } = useSetProfileData();
+  useEffect(() => {
+    const handleMount = async () => {
+      try {
+        const [{ data: post }, { data: comments }] = await Promise.all([
+          axiosReq.get(`/posts/${id}/`),
+          axiosReq.get(`/comments/?post=${id}`),
+        ]);
+        setPost({ results: [post] });
+        setComments(comments);
+      } catch (err) {
+        console.log(err);
+      }
+    };
+
+    handleMount();
+  }, [id]);
 
   return (
-    <div
-      className={`my-3 d-flex align-items-center ${mobile && "flex-column"}`}
-    >
-      <div>
-        <Link className="align-self-center" to={`/profiles/${id}`}>
-          <Avatar src={image} height={imageSize} />
-        </Link>
-      </div>
-      <div className={`mx-2 ${styles.WordBreak}`}>
-        <strong>{owner}</strong>
-      </div>
-      <div className={`text-right ${!mobile && "ml-auto"}`}>
-        {!mobile &&
-          currentUser &&
-          !is_owner &&
-          (following_id ? (
-            <Button
-              className={`${btnStyles.Button} ${btnStyles.BlackOutline}`}
-              onClick={() => handleUnfollow(profile)}
-            >
-              unfollow
-            </Button>
+    <Row className="h-100">
+      <Col className="py-2 p-0 p-lg-2" lg={8}>
+        <PopularProfiles mobile />
+        <Post {...post.results[0]} setPosts={setPost} postPage />
+        <Container className={appStyles.Content}>
+          {currentUser ? (
+            <CommentCreateForm
+              profile_id={currentUser.profile_id}
+              profileImage={profile_image}
+              post={id}
+              setPost={setPost}
+              setComments={setComments}
+            />
+          ) : comments.results.length ? (
+            "Comments"
+          ) : null}
+          {comments.results.length ? (
+            <InfiniteScroll
+              children={comments.results.map((comment) => (
+                <Comment
+                  key={comment.id}
+                  {...comment}
+                  setPost={setPost}
+                  setComments={setComments}
+                />
+              ))}
+              dataLength={comments.results.length}
+              loader={<Asset spinner />}
+              hasMore={!!comments.next}
+              next={() => fetchMoreData(comments, setComments)}
+            />
+          ) : currentUser ? (
+            <span>No comments yet, be the first to comment!</span>
           ) : (
-            <Button
-              className={`${btnStyles.Button} ${btnStyles.Black}`}
-              onClick={() => handleFollow(profile)}
-            >
-              follow
-            </Button>
-          ))}
-      </div>
-    </div>
+            <span>No comments... yet</span>
+          )}
+        </Container>
+      </Col>
+      <Col lg={4} className="d-none d-lg-block p-0 p-lg-2">
+        <PopularProfiles />
+      </Col>
+    </Row>
   );
-};
+}
 
-export default Profile;
+export default PostPage;
